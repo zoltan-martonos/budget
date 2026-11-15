@@ -30,6 +30,6 @@ public class AssistantController {
         if (user == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sign in to ask budget questions.");
         }
-        return new AssistantResponse(assistantService.answer(request.question()));
+        return new AssistantResponse(assistantService.answer(user, request.question()));
     }
 }

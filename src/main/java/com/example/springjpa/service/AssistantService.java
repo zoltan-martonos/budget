@@ -1,9 +1,13 @@
 package com.example.springjpa.service;
 
+import com.example.springjpa.domain.AssistantExchange;
+import com.example.springjpa.repository.AssistantExchangeRepository;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.Objects;
 
 @Service
 public class AssistantService {
@@ -39,13 +43,23 @@ public class AssistantService {
 
     private final ChatClient chatClient;
     private final BudgetSpendingTools spendingTools;
+    private final BudgetAccountService accountService;
+    private final AssistantExchangeRepository exchangeRepository;
 
-    public AssistantService(ChatClient chatClient, BudgetSpendingTools spendingTools) {
+    public AssistantService(
+            ChatClient chatClient,
+            BudgetSpendingTools spendingTools,
+            BudgetAccountService accountService,
+            AssistantExchangeRepository exchangeRepository) {
         this.chatClient = chatClient;
         this.spendingTools = spendingTools;
+        this.accountService = accountService;
+        this.exchangeRepository = exchangeRepository;
     }
 
-    public String answer(String question) {
+    public String answer(OidcUser user, String question) {
+        String subject = Objects.requireNonNull(user, "Authenticated user is required").getSubject();
+        long userId = accountService.requireUserId(subject);
         String answer = chatClient.prompt()
                 .system(SYSTEM_INSTRUCTIONS + "\nThe current date on the server is "
                         + LocalDate.now() + ". Resolve relative dates using this date.")
@@ -56,6 +70,7 @@ public class AssistantService {
         if (answer == null || answer.isBlank()) {
             throw new IllegalStateException("The assistant returned an empty response.");
         }
+        exchangeRepository.save(new AssistantExchange(userId, question, answer));
         return answer;
     }
 }

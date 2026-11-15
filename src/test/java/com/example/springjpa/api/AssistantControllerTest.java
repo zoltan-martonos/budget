@@ -1,5 +1,8 @@
 package com.example.springjpa.api;
 
+import com.example.springjpa.domain.AssistantExchange;
+import com.example.springjpa.repository.AssistantExchangeRepository;
+import com.example.springjpa.service.BudgetAccountService;
 import com.example.springjpa.service.BudgetSpendingTools;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,6 +15,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -33,6 +39,12 @@ class AssistantControllerTest {
     @Autowired
     private BudgetSpendingTools spendingTools;
 
+    @Autowired
+    private BudgetAccountService accountService;
+
+    @Autowired
+    private AssistantExchangeRepository exchangeRepository;
+
     @MockitoBean
     private ChatClient chatClient;
 
@@ -40,6 +52,10 @@ class AssistantControllerTest {
 
     @BeforeEach
     void setUpChatClient() {
+        accountService.registerOrUpdateGoogleIdentity(
+                "assistant-controller-owner", "assistant-controller-owner@example.com");
+        long userId = accountService.requireUserId("assistant-controller-owner");
+        exchangeRepository.deleteAll(exchangeRepository.findAllByUserIdOrderByCreatedAtAsc(userId));
         prompt = mock(ChatClient.ChatClientRequestSpec.class);
         ChatClient.CallResponseSpec response = mock(ChatClient.CallResponseSpec.class);
         when(chatClient.prompt()).thenReturn(prompt);
@@ -71,6 +87,29 @@ class AssistantControllerTest {
         assertTrue(systemPrompt.getValue().contains("spending_since_budget_start"));
         assertTrue(systemPrompt.getValue().contains("since your budget started on DATE"));
         assertTrue(systemPrompt.getValue().contains("Never infer an account"));
+
+        long userId = accountService.requireUserId("assistant-controller-owner");
+        List<AssistantExchange> exchanges =
+                exchangeRepository.findAllByUserIdOrderByCreatedAtAsc(userId);
+        assertEquals(1, exchanges.size());
+        assertEquals("How much did I spend yesterday?", exchanges.getFirst().getQuestion());
+        assertEquals("You spent €12.50 yesterday.", exchanges.getFirst().getResponse());
+        assertEquals(userId, exchanges.getFirst().getUserId());
+    }
+
+    @Test
+    void doesNotPersistAnEmptyModelResponse() throws Exception {
+        when(prompt.call().content()).thenReturn(" ");
+
+        mockMvc.perform(asOwner(post("/api/assistant/query"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"question":"A question with no answer"}
+                                """))
+                .andExpect(status().isConflict());
+
+        long userId = accountService.requireUserId("assistant-controller-owner");
+        assertTrue(exchangeRepository.findAllByUserIdOrderByCreatedAtAsc(userId).isEmpty());
     }
 
     @Test

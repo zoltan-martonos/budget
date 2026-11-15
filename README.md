@@ -35,6 +35,8 @@ The endpoint accepts only a question, not a user ID. Spending tools use the sign
 
 Lifetime, all-time, and “since inception” spending questions are measured from the signed-in user's budget start date through today. The app does not store a separate account-creation date.
 
+Successful assistant question/answer exchanges are stored in the local H2 database and associated with the signed-in account. Failed or empty model responses are not saved. This currently provides persistence only; no conversation-history API or UI is exposed.
+
 ## Google sign-in
 
 The app requires Google sign-in by default. Any Google account with a verified email can create and access its own private budget; accounts do not share expenses or settings. Account ownership is keyed by Google's stable identity subject, not by email. The app reads settings from environment variables or an optional `.env` file in the working directory. If OAuth credentials are not configured, it still starts but displays setup instructions and blocks access to the budget.
