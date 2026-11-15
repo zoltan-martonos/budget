@@ -2,6 +2,7 @@ package com.example.springjpa.service;
 
 import com.example.springjpa.api.dto.BudgetSetupRequest;
 import com.example.springjpa.api.dto.CreateExpenseRequest;
+import com.example.springjpa.domain.Expense;
 import com.example.springjpa.repository.BudgetSettingsRepository;
 import com.example.springjpa.repository.ExpenseRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -18,6 +19,9 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
 import java.math.BigDecimal;
+import java.time.format.TextStyle;
+import java.util.Locale;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -122,6 +126,91 @@ class BudgetSpendingToolsTest {
     }
 
     @Test
+    void recentThreeWeeksUsesInclusiveRollingTwentyOneDayWindowAndOnlyCountsOwnerExpenses() {
+        LocalDate today = LocalDate.now();
+        LocalDate startDate = today.minusDays(20);
+        long ownerId = accountService.requireUserId(OWNER_SUBJECT);
+        long otherId = accountService.requireUserId(OTHER_SUBJECT);
+        budgetService.setup(ownerId, new BudgetSetupRequest(today.minusDays(30)));
+        budgetService.setup(otherId, new BudgetSetupRequest(today.minusDays(30)));
+        budgetService.addExpense(ownerId, new CreateExpenseRequest(
+                99_999L, "Just outside", startDate.minusDays(1)));
+        budgetService.addExpense(ownerId, new CreateExpenseRequest(12_345L, "At start", startDate));
+        budgetService.addExpense(ownerId, new CreateExpenseRequest(6_789L, "Today", today));
+        budgetService.addExpense(otherId, new CreateExpenseRequest(50_000L, "Other user", today));
+
+        BudgetSpendingTools.RecentSpendingTotal total = tools.recentSpendingTotal(3);
+
+        assertEquals(3, total.weeks());
+        assertEquals(startDate, total.startDate());
+        assertEquals(today, total.endDate());
+        assertEquals(new BigDecimal("191.34"), total.totalSpentEur());
+    }
+
+    @Test
+    void recentWeeksClipToBudgetStartAndRejectUnboundedWeekCounts() {
+        LocalDate today = LocalDate.now();
+        LocalDate budgetStart = today.minusDays(5);
+        long ownerId = accountService.requireUserId(OWNER_SUBJECT);
+        budgetService.setup(ownerId, new BudgetSetupRequest(budgetStart));
+        expenseRepository.save(new Expense(
+                ownerId, budgetStart.minusDays(1), 50_000L, "Before budget start"));
+        budgetService.addExpense(ownerId, new CreateExpenseRequest(1_234L, "At budget start", budgetStart));
+        budgetService.addExpense(ownerId, new CreateExpenseRequest(5_678L, "Today", today));
+
+        BudgetSpendingTools.RecentSpendingTotal total = tools.recentSpendingTotal(3);
+
+        assertEquals(budgetStart, total.startDate());
+        assertEquals(today, total.endDate());
+        assertEquals(new BigDecimal("69.12"), total.totalSpentEur());
+        assertThrows(IllegalArgumentException.class, () -> tools.recentSpendingTotal(0));
+        assertThrows(IllegalArgumentException.class, () -> tools.recentSpendingTotal(53));
+    }
+
+    @Test
+    void highestSpendingDateReturnsEveryTiedMaximumWithinBudgetHistoryOnly() {
+        LocalDate today = LocalDate.now();
+        LocalDate budgetStart = today.minusDays(10);
+        LocalDate firstMaximum = today.minusDays(7);
+        LocalDate tiedMaximum = today.minusDays(2);
+        long ownerId = accountService.requireUserId(OWNER_SUBJECT);
+        long otherId = accountService.requireUserId(OTHER_SUBJECT);
+        budgetService.setup(ownerId, new BudgetSetupRequest(budgetStart));
+        budgetService.setup(otherId, new BudgetSetupRequest(budgetStart));
+
+        expenseRepository.save(new Expense(ownerId, budgetStart.minusDays(1), 99_999L, "Before budget"));
+        budgetService.addExpense(ownerId, new CreateExpenseRequest(3_000L, "Budget start", budgetStart));
+        budgetService.addExpense(ownerId, new CreateExpenseRequest(2_500L, "First maximum", firstMaximum));
+        budgetService.addExpense(ownerId, new CreateExpenseRequest(3_500L, "Same day", firstMaximum));
+        budgetService.addExpense(ownerId, new CreateExpenseRequest(6_000L, "Tied maximum", tiedMaximum));
+        budgetService.addExpense(ownerId, new CreateExpenseRequest(1_000L, "Today", today));
+        expenseRepository.save(new Expense(ownerId, today.plusDays(1), 100_000L, "Future"));
+        budgetService.addExpense(otherId, new CreateExpenseRequest(200_000L, "Other user", firstMaximum));
+
+        BudgetSpendingTools.HighestSpendingDates result = tools.highestSpendingDate();
+
+        assertEquals(2, result.dates().size());
+        assertEquals(List.of(firstMaximum, tiedMaximum),
+                result.dates().stream().map(BudgetSpendingTools.HighestSpendingDay::date).toList());
+        assertEquals(List.of("€60.00", "€60.00"),
+                result.dates().stream()
+                        .map(day -> "€" + day.totalSpentEur().toPlainString())
+                        .toList());
+        assertEquals(List.of(
+                        firstMaximum.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH),
+                        tiedMaximum.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH)),
+                result.dates().stream().map(BudgetSpendingTools.HighestSpendingDay::dayOfWeek).toList());
+    }
+
+    @Test
+    void highestSpendingDateReturnsNoDatesWhenThereAreNoExpenses() {
+        budgetService.setup(accountService.requireUserId(OWNER_SUBJECT),
+                new BudgetSetupRequest(LocalDate.now().minusDays(1)));
+
+        assertEquals(List.of(), tools.highestSpendingDate().dates());
+    }
+
+    @Test
     void rejectsInvalidAndFutureDatesAndRequiresAuthenticatedOidcUser() {
         LocalDate tomorrow = LocalDate.now().plusDays(1);
 
@@ -144,6 +233,8 @@ class BudgetSpendingToolsTest {
         assertThrows(IllegalStateException.class, () ->
                 tools.dailySpendingTotal(LocalDate.now().toString()));
         assertThrows(IllegalStateException.class, tools::spendingSinceBudgetStart);
+        assertThrows(IllegalStateException.class, () -> tools.recentSpendingTotal(3));
+        assertThrows(IllegalStateException.class, tools::highestSpendingDate);
     }
 
     private void authenticateAs(String subject) {

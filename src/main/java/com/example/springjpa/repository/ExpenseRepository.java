@@ -27,7 +27,26 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
 
+    @Query("""
+            select expense.spentOn as spentOn, sum(expense.amountCents) as totalSpentCents
+            from Expense expense
+            where expense.userId = :userId
+              and expense.spentOn between :startDate and :endDate
+            group by expense.spentOn
+            order by expense.spentOn
+            """)
+    List<DailySpendingTotal> findDailySpendingTotals(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
     boolean existsByIdAndUserId(Long id, Long userId);
 
     void deleteByIdAndUserId(Long id, Long userId);
+
+    interface DailySpendingTotal {
+        LocalDate getSpentOn();
+
+        Long getTotalSpentCents();
+    }
 }

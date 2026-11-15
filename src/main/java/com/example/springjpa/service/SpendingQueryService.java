@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 @Service
@@ -57,6 +59,56 @@ public class SpendingQueryService {
     }
 
     @Transactional(readOnly = true)
+    public SpendingPeriodTotal totalSpentForRecentWeeks(OidcUser user, int weeks) {
+        if (weeks < 1 || weeks > 52) {
+            throw new IllegalArgumentException("Weeks must be between 1 and 52.");
+        }
+
+        long userId = userId(user);
+        BudgetSettings settings = requireBudget(userId);
+        LocalDate endDate = LocalDate.now();
+        long days = Math.multiplyExact((long) weeks, 7);
+        LocalDate requestedStart = endDate.minusDays(days - 1);
+        LocalDate effectiveStart = requestedStart.isBefore(settings.getAllowanceStartDate())
+                ? settings.getAllowanceStartDate() : requestedStart;
+        long totalSpentCents = effectiveStart.isAfter(endDate)
+                ? 0
+                : expenseRepository.sumAmountCentsByUserIdAndSpentOnBetween(
+                        userId, effectiveStart, endDate);
+        return new SpendingPeriodTotal(effectiveStart, endDate, totalSpentCents);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SpendingDateTotal> highestSpendingDates(OidcUser user) {
+        long userId = userId(user);
+        BudgetSettings settings = requireBudget(userId);
+        LocalDate startDate = settings.getAllowanceStartDate();
+        LocalDate endDate = LocalDate.now();
+        if (startDate.isAfter(endDate)) {
+            return List.of();
+        }
+
+        List<ExpenseRepository.DailySpendingTotal> dailyTotals =
+                expenseRepository.findDailySpendingTotals(userId, startDate, endDate);
+        if (dailyTotals.isEmpty()) {
+            return List.of();
+        }
+
+        long maxSpentCents = dailyTotals.stream()
+                .mapToLong(ExpenseRepository.DailySpendingTotal::getTotalSpentCents)
+                .max()
+                .orElseThrow();
+        List<SpendingDateTotal> highestTotals = new ArrayList<>();
+        for (ExpenseRepository.DailySpendingTotal dailyTotal : dailyTotals) {
+            if (dailyTotal.getTotalSpentCents() == maxSpentCents) {
+                highestTotals.add(new SpendingDateTotal(
+                        dailyTotal.getSpentOn(), dailyTotal.getTotalSpentCents()));
+            }
+        }
+        return List.copyOf(highestTotals);
+    }
+
+    @Transactional(readOnly = true)
     public long budgetBalanceCents(OidcUser user, LocalDate asOfDate) {
         requireDate(asOfDate, "Date");
         requireNotFuture(asOfDate);
@@ -100,5 +152,8 @@ public class SpendingQueryService {
     }
 
     public record SpendingPeriodTotal(LocalDate startDate, LocalDate endDate, long totalSpentCents) {
+    }
+
+    public record SpendingDateTotal(LocalDate date, long totalSpentCents) {
     }
 }

@@ -10,8 +10,11 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.format.TextStyle;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAdjusters;
+import java.util.List;
+import java.util.Locale;
 
 @Component
 public class BudgetSpendingTools {
@@ -56,17 +59,52 @@ public class BudgetSpendingTools {
     }
 
     @Tool(
+            name = "recent_spending_total",
+            description = "Get the authenticated user's total spending over the last N weeks, as a rolling "
+                    + "period of N*7 calendar days ending today (both endpoints inclusive). Use this for "
+                    + "recent-period questions such as 'in the last 3 weeks'; do not use the "
+                    + "spending_since_budget_start tool for these. The period is clipped to the user's "
+                    + "budget start date when newer, and the returned startDate is the effective start. "
+                    + "Weeks must be between 1 and 52. The amount is in euros with exactly two decimals.")
+    public RecentSpendingTotal recentSpendingTotal(
+            @ToolParam(description = "Number of weeks, from 1 to 52") int weeks) {
+        SpendingQueryService.SpendingPeriodTotal total =
+                spendingQueryService.totalSpentForRecentWeeks(authenticatedUser(), weeks);
+        return new RecentSpendingTotal(
+                weeks, total.startDate(), total.endDate(), euroAmount(total.totalSpentCents()));
+    }
+
+    @Tool(
             name = "spending_since_budget_start",
             description = "Get the authenticated user's total spending from their budget allowance start date "
                     + "through today, inclusive. Use this for lifetime, all-time, or since-inception spending "
                     + "questions. Describe the result as spending since the budget started on the returned date; "
-                    + "this is not the Google account creation date. "
+                    + "do not use this for bounded recent periods such as 'last 3 weeks'. This is not the "
+                    + "Google account creation date. "
                     + "The result is a euro amount with exactly two decimal places.")
     public SpendingSinceBudgetStart spendingSinceBudgetStart() {
         SpendingQueryService.SpendingPeriodTotal total =
                 spendingQueryService.totalSpentSinceBudgetStart(authenticatedUser());
         return new SpendingSinceBudgetStart(
                 total.startDate(), total.endDate(), euroAmount(total.totalSpentCents()));
+    }
+
+    @Tool(
+            name = "highest_spending_date",
+            description = "Find every date tied for the highest total spending in the authenticated user's "
+                    + "recorded budget history, from budget start through today inclusive. Use this for "
+                    + "questions asking which day/date had the most or highest spending. Returns the actual "
+                    + "date, weekday name, and total in euros. If there are no recorded expenses, the dates "
+                    + "list is empty; never substitute today or a zero-spending day.")
+    public HighestSpendingDates highestSpendingDate() {
+        List<HighestSpendingDay> days = spendingQueryService.highestSpendingDates(authenticatedUser())
+                .stream()
+                .map(total -> new HighestSpendingDay(
+                        total.date(),
+                        total.date().getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH),
+                        euroAmount(total.totalSpentCents())))
+                .toList();
+        return new HighestSpendingDates(days);
     }
 
     private OidcUser authenticatedUser() {
@@ -102,6 +140,22 @@ public class BudgetSpendingTools {
     public record SpendingSinceBudgetStart(
             LocalDate budgetStartDate,
             LocalDate throughDate,
+            BigDecimal totalSpentEur) {
+    }
+
+    public record RecentSpendingTotal(
+            int weeks,
+            LocalDate startDate,
+            LocalDate endDate,
+            BigDecimal totalSpentEur) {
+    }
+
+    public record HighestSpendingDates(List<HighestSpendingDay> dates) {
+    }
+
+    public record HighestSpendingDay(
+            LocalDate date,
+            String dayOfWeek,
             BigDecimal totalSpentEur) {
     }
 }

@@ -63,6 +63,11 @@ class AssistantControllerTest {
         verify(prompt).tools(spendingTools);
         org.mockito.ArgumentCaptor<String> systemPrompt = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(prompt).system(systemPrompt.capture());
+        assertTrue(systemPrompt.getValue().contains("recent_spending_total"));
+        assertTrue(systemPrompt.getValue().contains("Never use"));
+        assertTrue(systemPrompt.getValue().contains("bounded recent period"));
+        assertTrue(systemPrompt.getValue().contains("highest_spending_date"));
+        assertTrue(systemPrompt.getValue().contains("Never invent a date"));
         assertTrue(systemPrompt.getValue().contains("spending_since_budget_start"));
         assertTrue(systemPrompt.getValue().contains("since your budget started on DATE"));
         assertTrue(systemPrompt.getValue().contains("Never infer an account"));

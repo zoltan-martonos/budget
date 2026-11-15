@@ -31,7 +31,7 @@ After signing in, send a JSON `POST` to `/api/assistant/query`, for example:
 {"question":"How much did I spend yesterday?"}
 ```
 
-The endpoint accepts only a question, not a user ID. Daily and weekly spending tools use the signed-in account; weeks run Monday through Sunday, with the current week ending today. The endpoint requires the authenticated session and the usual CSRF token for POST requests.
+The endpoint accepts only a question, not a user ID. Spending tools use the signed-in account; calendar weeks run Monday through Sunday, with the current week ending today. Rolling periods such as “last 3 weeks” use an inclusive 21-day window ending today and are clipped to the budget start date when necessary. Questions about the highest-spending day consider recorded expenses from budget start through today and include ties. The endpoint requires the authenticated session and the usual CSRF token for POST requests.
 
 Lifetime, all-time, and “since inception” spending questions are measured from the signed-in user's budget start date through today. The app does not store a separate account-creation date.
 
