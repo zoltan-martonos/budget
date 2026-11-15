@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f4ef">
+    <title>Sign in — Daylight</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/login.js" defer></script>
+</head>
+<body>
+<div class="shell">
+    <header class="topbar">
+        <a class="brand" href="/login.html" aria-label="Daylight home"><span class="brand-mark">d</span><span>daylight</span></a>
+        <div class="topbar-note"><span class="status-dot"></span> Your personal budget</div>
+    </header>
+    <main>
+        <section class="setup-card login-card">
+            <div class="eyebrow"><span class="sun-mark">✳</span> Welcome back</div>
+            <h1>Your money,<br>in a better light.</h1>
+            <p class="intro">Sign in with any Google account that has a verified email to access your private budget.</p>
+            <p id="login-error" class="error-message" role="alert" hidden></p>
+            <p id="login-message" class="login-message" hidden></p>
+            <a id="google-sign-in" class="button button-dark google-button" href="/oauth2/authorization/google" hidden>
+                <span class="google-g" aria-hidden="true">G</span> Continue with Google <span aria-hidden="true">→</span>
+            </a>
+            <div id="setup-help" class="setup-help" hidden>
+                <strong>Google sign-in needs setup</strong>
+                <p>Set <code>BUDGET_GOOGLE_CLIENT_ID</code> and <code>BUDGET_GOOGLE_CLIENT_SECRET</code> in your environment, then restart the app.</p>
+                <p>Add <code>http://localhost:8080/login/oauth2/code/google</code> as an authorized redirect URI in your Google OAuth client.</p>
+            </div>
+        </section>
+    </main>
+    <footer><span>daylight</span><span>Small steps. A clearer picture.</span></footer>
+</div>
+</body>
+</html>

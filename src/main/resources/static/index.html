@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f4ef">
+    <title>Daylight — Spending budget</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+</head>
+<body>
+<div class="shell">
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="Daylight home"><span class="brand-mark">d</span><span>daylight</span></a>
+        <div class="account-controls">
+            <span id="account-email" class="topbar-note"></span>
+            <button id="logout-button" class="logout-button" type="button">Sign out</button>
+        </div>
+    </header>
+
+    <main>
+        <section id="setup-view" class="setup-card" hidden>
+            <div class="eyebrow"><span class="sun-mark">✳</span> A little more clarity, every day</div>
+            <h1>Your money,<br>in a better light.</h1>
+            <p class="intro">You get <strong>€30 every day</strong>. Anything left over rolls forward, so your available balance grows on quieter days.</p>
+            <form id="setup-form" class="setup-form">
+                <label for="start-date">When should your daily allowance start?</label>
+                <div class="setup-date-row">
+                    <input id="start-date" name="startDate" type="date" required>
+                    <button class="button button-dark" type="submit">Set up my budget <span aria-hidden="true">→</span></button>
+                </div>
+                <p class="form-hint">Choose today or an earlier date. Your allowance starts from that day, inclusive.</p>
+            </form>
+        </section>
+
+        <div id="app-view" hidden>
+            <section class="welcome-row">
+                <div>
+                    <div class="eyebrow"><span class="sun-mark">✳</span> A little more clarity, every day</div>
+                    <h1>Your spending,<br><span>in a better light.</span></h1>
+                </div>
+                <p class="welcome-note">€30 added every day.<br><strong>Unspent money stays yours.</strong></p>
+            </section>
+
+            <section class="summary-grid" aria-label="Budget summary">
+                <article class="balance-card">
+                    <div class="card-topline"><span>AVAILABLE BALANCE</span><span class="balance-icon">↗</span></div>
+                    <div id="current-balance" class="balance-value">€0.00</div>
+                    <div class="balance-caption">Your accumulated budget, minus everything spent</div>
+                    <div class="balance-foot"><span class="status-dot light"></span><span id="start-date-caption"></span></div>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-icon peach">↘</div>
+                    <div class="stat-label">TOTAL SPENT</div>
+                    <div id="total-spent" class="stat-value">€0.00</div>
+                    <div class="stat-caption">Since your budget started</div>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-icon mint">✳</div>
+                    <div class="stat-label">TODAY’S ALLOWANCE</div>
+                    <div class="stat-value">€30<span>.00</span></div>
+                    <div class="stat-caption">Added automatically each day</div>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-icon peach">↘</div>
+                    <div class="stat-label">SPENT TODAY</div>
+                    <div id="today-spent" class="stat-value">€0<span>.00</span></div>
+                    <div class="stat-caption">Every purchase, all in one place</div>
+                </article>
+            </section>
+
+            <section class="panel assistant-panel" aria-labelledby="assistant-heading">
+                <div class="panel-heading">
+                    <div>
+                        <div class="eyebrow muted">A LITTLE HELP, WHEN YOU NEED IT</div>
+                        <h2 id="assistant-heading">Ask about your spending</h2>
+                    </div>
+                    <span class="panel-heading-icon" aria-hidden="true">✳</span>
+                </div>
+                <p id="assistant-hint" class="assistant-hint">
+                    Ask a question about your daily or weekly spending. Enter to send, or Shift+Enter for a new line.
+                </p>
+                <form id="assistant-form" class="assistant-form">
+                    <label for="assistant-question">Your question</label>
+                    <textarea id="assistant-question" name="question" rows="2" maxlength="2000"
+                              aria-describedby="assistant-hint" placeholder="How much did I spend yesterday?"
+                              required></textarea>
+                    <div class="assistant-actions">
+                        <p id="assistant-error" class="error-message assistant-error" role="alert" hidden></p>
+                        <button id="assistant-submit" class="button button-dark assistant-submit" type="submit">
+                            Ask <span aria-hidden="true">→</span>
+                        </button>
+                    </div>
+                </form>
+                <p id="assistant-answer" class="assistant-answer" role="status" aria-live="polite"
+                   aria-atomic="true" hidden></p>
+            </section>
+
+            <section class="content-grid">
+                <article class="panel expense-panel">
+                    <div class="panel-heading">
+                        <div><div class="eyebrow muted">MAKE IT COUNT</div><h2>Add an expense</h2></div>
+                        <span class="panel-heading-icon">＋</span>
+                    </div>
+                    <form id="expense-form" class="expense-form">
+                        <label for="amount">How much?</label>
+                        <div class="amount-input"><span>€</span><input id="amount" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required></div>
+                        <div class="field-row">
+                            <div class="field">
+                                <label for="description">What was it for? <span>(optional)</span></label>
+                                <input id="description" name="description" type="text" maxlength="240" placeholder="Coffee, groceries…">
+                            </div>
+                            <div class="field">
+                                <label for="spent-on">When?</label>
+                                <input id="spent-on" name="spentOn" type="date" required>
+                            </div>
+                        </div>
+                        <p id="form-error" class="error-message" role="alert" hidden></p>
+                        <button class="button button-dark submit-expense" type="submit">Add to my spending <span aria-hidden="true">→</span></button>
+                    </form>
+                    <div class="overspend-note"><span>↗</span><p>Spent more than your balance? That’s okay. Your balance can go below zero.</p></div>
+                </article>
+
+                <article class="panel history-panel">
+                    <div class="history-heading">
+                        <div><div class="eyebrow muted">THE LITTLE THINGS ADD UP</div><h2>Your activity</h2></div>
+                        <div class="month-nav">
+                            <button id="previous-month" type="button" aria-label="Previous month">‹</button>
+                            <span id="month-label"></span>
+                            <button id="next-month" type="button" aria-label="Next month">›</button>
+                        </div>
+                    </div>
+                    <div id="activity-list" class="activity-list"></div>
+                    <div id="empty-state" class="empty-state" hidden>
+                        <span class="empty-icon">☼</span>
+                        <strong>A fresh page</strong>
+                        <span>No expenses this month. Enjoy the breathing room.</span>
+                    </div>
+                    <div class="history-footer"><span>Balance rolls over, day after day</span><span class="footer-spark">✳</span></div>
+                </article>
+
+                <article class="panel weekly-panel">
+                    <div class="panel-heading">
+                        <div><div class="eyebrow muted">WEEK BY WEEK</div><h2>Weekly spend</h2></div>
+                        <span class="panel-heading-icon">↗</span>
+                    </div>
+                    <p class="weekly-hint">Monday–Sunday · selected month</p>
+                    <div id="weekly-spending" class="weekly-spending" aria-live="polite"></div>
+                </article>
+            </section>
+            <p class="rule-note"><span>✳</span> Your daily €30 allowance started <strong id="rule-start-date"></strong>. Every calendar day counts, and leftover balance carries forward.</p>
+            <section class="start-date-settings" aria-label="Budget start date">
+                <button id="edit-start-date-button" class="text-button" type="button" aria-expanded="false" aria-controls="start-date-settings-form">Change start date</button>
+                <form id="start-date-settings-form" class="start-date-form" hidden>
+                    <label for="new-start-date">New start date</label>
+                    <div class="setup-date-row">
+                        <input id="new-start-date" name="startDate" type="date" required>
+                        <button class="button button-dark" type="submit">Update start date</button>
+                    </div>
+                    <p class="form-hint">Choose an earlier date. Your balance will be recalculated with €30 added for each additional day.</p>
+                    <p id="start-date-error" class="error-message" role="alert" hidden></p>
+                </form>
+            </section>
+        </div>
+        <p id="app-error" class="global-error" role="alert" hidden></p>
+    </main>
+    <footer><span>daylight</span><span>Small steps. A clearer picture.</span></footer>
+</div>
+</body>
+</html>
