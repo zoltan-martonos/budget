@@ -76,6 +76,60 @@ This bearer-token setup is for localhost testing only, not a public deployment
 authentication strategy. Never commit or share the token, and do not expose the app
 publicly without a separately designed and secured deployment.
 
+### Connect GitHub Copilot CLI
+
+The repository's `.mcp.json` configures the `budget` server at
+`http://localhost:8080/mcp`. Copilot CLI reads workspace `.mcp.json` files, so run
+it from this repository after starting the app, signing in, and creating a token
+using the steps above. Set the token in the same terminal before launching Copilot:
+
+```sh
+export BUDGET_MCP_TOKEN="paste-the-token-here"
+copilot
+```
+
+For example, ask Copilot:
+
+```text
+How much did I spend yesterday?
+```
+
+Copilot uses the budget server to answer for the account associated with the token.
+In Copilot CLI, use `/mcp` to check the server, or run `copilot mcp list` in a
+terminal. If the server is unavailable, confirm the app is running and that
+`BUDGET_MCP_TOKEN` is set in the environment where Copilot CLI was started. Do not
+commit the token or add it directly to `.mcp.json`.
+
+### Connect Codex
+
+Codex can connect to the same Streamable HTTP endpoint. First start the app, sign in
+with Google, and create a token using the steps above. Set the token in the shell
+where you will launch Codex, then register the server:
+
+```sh
+export BUDGET_MCP_TOKEN="paste-the-token-here"
+codex mcp add budget --url http://localhost:8080/mcp --bearer-token-env-var BUDGET_MCP_TOKEN
+```
+
+The token stays in your shell environment; do not paste it directly into the Codex
+command or commit it in a configuration file. Verify the connection with:
+
+```sh
+codex mcp get budget
+```
+
+The project `.mcp.json` contains the equivalent HTTP server URL and bearer header
+configuration for clients that read that file. For Codex, the CLI command above
+stores the server in Codex's user configuration. Rotate or revoke the token using
+the endpoints described above if it is exposed.
+
+Once connected, ask Codex a question that uses one of the spending tools, for
+example:
+
+```text
+Using the Budget MCP server, how much did I spend this week?
+```
+
 ## Google sign-in
 
 The app requires Google sign-in by default. Any Google account with a verified email can create and access its own private budget; accounts do not share expenses or settings. Account ownership is keyed by Google's stable identity subject, not by email. The app reads settings from environment variables or an optional `.env` file in the working directory. If OAuth credentials are not configured, it still starts but displays setup instructions and blocks access to the budget.
