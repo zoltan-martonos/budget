@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "budget": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Cookie": "JSESSIONID=${BUDGET_MCP_SESSION_COOKIE}",
+        "X-CSRF-TOKEN": "${BUDGET_MCP_CSRF_TOKEN}"
+      }
+    }
+  }
+}

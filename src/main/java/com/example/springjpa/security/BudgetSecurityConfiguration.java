@@ -1,6 +1,7 @@
 package com.example.springjpa.security;
 
 import com.example.springjpa.service.BudgetAccountService;
+import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,10 +19,13 @@ import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
-import org.springframework.security.web.authentication.AuthenticationFailureHandler;
-import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -122,9 +126,15 @@ public class BudgetSecurityConfiguration {
             @Value("${budget.auth.google.client-id:}") String clientId,
             @Value("${budget.auth.google.client-secret:}") String clientSecret) throws Exception {
         http.csrf(csrf -> csrf.csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()));
+        AuthenticationEntryPoint mcpAuthenticationEntryPoint =
+                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED);
+        http.exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
+                mcpAuthenticationEntryPoint, new AntPathRequestMatcher("/mcp")));
 
         if (!authenticationEnabled) {
-            http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+            http.authorizeHttpRequests(auth -> auth
+                    .requestMatchers("/mcp").authenticated()
+                    .anyRequest().permitAll());
             return http.build();
         }
 
@@ -154,8 +164,13 @@ public class BudgetSecurityConfiguration {
 
         if (!googleConfigured) {
             http.exceptionHandling(exceptions -> exceptions
-                    .authenticationEntryPoint((request, response, exception) ->
-                            response.sendRedirect("/login.html?setup=required")));
+                    .authenticationEntryPoint((request, response, exception) -> {
+                        if (new AntPathRequestMatcher("/mcp").matches(request)) {
+                            mcpAuthenticationEntryPoint.commence(request, response, exception);
+                        } else {
+                            response.sendRedirect("/login.html?setup=required");
+                        }
+                    }));
         }
         return http.build();
     }
