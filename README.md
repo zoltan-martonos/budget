@@ -20,10 +20,10 @@ The assistant uses Spring AI with a local Ollama server; no hosted model or API 
 
 ```sh
 ollama serve
-ollama pull llama3.2
+ollama pull llama3.3
 ```
 
-By default the app connects to `http://localhost:11434` and uses `llama3.2`. Override these with `OLLAMA_BASE_URL` and `OLLAMA_MODEL` if needed. The app does not download the model automatically. Start the app with `mvn spring-boot:run` after Ollama is running.
+By default the app connects to `http://localhost:11434` and uses `llama3.3`. Override these with `OLLAMA_BASE_URL` and `OLLAMA_MODEL` if needed. The app does not download the model automatically. Start the app with `mvn spring-boot:run` after Ollama is running.
 
 After signing in, send a JSON `POST` to `/api/assistant/query`, for example:
 
@@ -36,6 +36,25 @@ The endpoint accepts only a question, not a user ID. Spending tools use the sign
 Lifetime, all-time, and “since inception” spending questions are measured from the signed-in user's budget start date through today. The app does not store a separate account-creation date.
 
 Successful assistant question/answer exchanges are stored in the local H2 database and associated with the signed-in account. Failed or empty model responses are not saved. This currently provides persistence only; no conversation-history API or UI is exposed.
+
+## Local MCP server
+
+The app also exposes its five read-only spending tools over Streamable HTTP at
+`http://localhost:8080/mcp`: daily, weekly, and recent spending totals, spending since
+the budget start date, and highest-spending date(s). The MCP server uses the same
+signed-in Google OIDC session as the web app. It accepts no user ID or email arguments
+and provides no write or arbitrary-query tools.
+
+For local testing, sign in to the app in a browser first. In that browser's developer
+tools, copy the `JSESSIONID` cookie for `localhost` (it is HTTP-only, so JavaScript
+cannot read it). While signed in, open `http://localhost:8080/api/auth/status` and use
+the returned `csrfToken` value. Set those values in the environment as
+`BUDGET_MCP_SESSION_COOKIE` and `BUDGET_MCP_CSRF_TOKEN`; `.mcp.json` forwards them to
+the MCP server as the `Cookie` and `X-CSRF-TOKEN` headers. Restart the MCP client after
+updating either value. Keep both values private and do not commit them. This
+cookie-forwarding setup is for local testing, not an authentication strategy for a
+public deployment. Do not expose the app publicly without a separately designed and
+secured deployment.
 
 ## Google sign-in
 
