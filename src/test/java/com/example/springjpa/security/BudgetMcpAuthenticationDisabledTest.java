@@ -35,5 +35,8 @@ class BudgetMcpAuthenticationDisabledTest {
                                 }}
                                 """))
                 .andExpect(status().is4xxClientError());
+
+        mockMvc.perform(post("/api/mcp-token").with(csrf()))
+                .andExpect(status().is4xxClientError());
     }
 }

@@ -3,33 +3,28 @@ package com.example.springjpa.service;
 import com.example.springjpa.domain.BudgetSettings;
 import com.example.springjpa.repository.BudgetSettingsRepository;
 import com.example.springjpa.repository.ExpenseRepository;
-import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 @Service
 public class SpendingQueryService {
 
-    private final BudgetAccountService accountService;
     private final BudgetSettingsRepository settingsRepository;
     private final ExpenseRepository expenseRepository;
 
     public SpendingQueryService(
-            BudgetAccountService accountService,
             BudgetSettingsRepository settingsRepository,
             ExpenseRepository expenseRepository) {
-        this.accountService = accountService;
         this.settingsRepository = settingsRepository;
         this.expenseRepository = expenseRepository;
     }
 
     @Transactional(readOnly = true)
-    public long totalSpentCents(OidcUser user, LocalDate startDate, LocalDate endDate) {
+    public long totalSpentCents(long userId, LocalDate startDate, LocalDate endDate) {
         requireDate(startDate, "Start date");
         requireDate(endDate, "End date");
         if (startDate.isAfter(endDate)) {
@@ -37,7 +32,6 @@ public class SpendingQueryService {
         }
         requireNotFuture(endDate);
 
-        long userId = userId(user);
         BudgetSettings settings = requireBudget(userId);
         LocalDate effectiveStart = startDate.isBefore(settings.getAllowanceStartDate())
                 ? settings.getAllowanceStartDate() : startDate;
@@ -49,22 +43,20 @@ public class SpendingQueryService {
     }
 
     @Transactional(readOnly = true)
-    public SpendingPeriodTotal totalSpentSinceBudgetStart(OidcUser user) {
-        long userId = userId(user);
+    public SpendingPeriodTotal totalSpentSinceBudgetStart(long userId) {
         BudgetSettings settings = requireBudget(userId);
         LocalDate startDate = settings.getAllowanceStartDate();
         LocalDate endDate = LocalDate.now();
-        long totalSpentCents = totalSpentCents(user, startDate, endDate);
+        long totalSpentCents = totalSpentCents(userId, startDate, endDate);
         return new SpendingPeriodTotal(startDate, endDate, totalSpentCents);
     }
 
     @Transactional(readOnly = true)
-    public SpendingPeriodTotal totalSpentForRecentWeeks(OidcUser user, int weeks) {
+    public SpendingPeriodTotal totalSpentForRecentWeeks(long userId, int weeks) {
         if (weeks < 1 || weeks > 52) {
             throw new IllegalArgumentException("Weeks must be between 1 and 52.");
         }
 
-        long userId = userId(user);
         BudgetSettings settings = requireBudget(userId);
         LocalDate endDate = LocalDate.now();
         long days = Math.multiplyExact((long) weeks, 7);
@@ -79,8 +71,7 @@ public class SpendingQueryService {
     }
 
     @Transactional(readOnly = true)
-    public List<SpendingDateTotal> highestSpendingDates(OidcUser user) {
-        long userId = userId(user);
+    public List<SpendingDateTotal> highestSpendingDates(long userId) {
         BudgetSettings settings = requireBudget(userId);
         LocalDate startDate = settings.getAllowanceStartDate();
         LocalDate endDate = LocalDate.now();
@@ -109,11 +100,10 @@ public class SpendingQueryService {
     }
 
     @Transactional(readOnly = true)
-    public long budgetBalanceCents(OidcUser user, LocalDate asOfDate) {
+    public long budgetBalanceCents(long userId, LocalDate asOfDate) {
         requireDate(asOfDate, "Date");
         requireNotFuture(asOfDate);
 
-        long userId = userId(user);
         BudgetSettings settings = requireBudget(userId);
         LocalDate allowanceStart = settings.getAllowanceStartDate();
         if (asOfDate.isBefore(allowanceStart)) {
@@ -126,11 +116,6 @@ public class SpendingQueryService {
         long spentCents = expenseRepository.sumAmountCentsByUserIdAndSpentOnBetween(
                 userId, allowanceStart, asOfDate);
         return Math.subtractExact(allowanceCents, spentCents);
-    }
-
-    private long userId(OidcUser user) {
-        String subject = Objects.requireNonNull(user, "Authenticated user is required").getSubject();
-        return accountService.requireUserId(subject);
     }
 
     private BudgetSettings requireBudget(long userId) {

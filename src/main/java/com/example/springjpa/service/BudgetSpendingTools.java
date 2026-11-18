@@ -1,5 +1,6 @@
 package com.example.springjpa.service;
 
+import com.example.springjpa.security.BudgetMcpPrincipal;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.security.core.Authentication;
@@ -10,8 +11,8 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.format.TextStyle;
 import java.time.format.DateTimeParseException;
+import java.time.format.TextStyle;
 import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Locale;
@@ -20,9 +21,13 @@ import java.util.Locale;
 public class BudgetSpendingTools {
 
     private final SpendingQueryService spendingQueryService;
+    private final BudgetAccountService accountService;
 
-    public BudgetSpendingTools(SpendingQueryService spendingQueryService) {
+    public BudgetSpendingTools(
+            SpendingQueryService spendingQueryService,
+            BudgetAccountService accountService) {
         this.spendingQueryService = spendingQueryService;
+        this.accountService = accountService;
     }
 
     @Tool(
@@ -33,7 +38,7 @@ public class BudgetSpendingTools {
     public DailySpendingTotal dailySpendingTotal(
             @ToolParam(description = "Calendar date in YYYY-MM-DD format") String date) {
         LocalDate day = parseDate(date);
-        long totalCents = spendingQueryService.totalSpentCents(authenticatedUser(), day, day);
+        long totalCents = spendingQueryService.totalSpentCents(authenticatedUserId(), day, day);
         return new DailySpendingTotal(day, euroAmount(totalCents));
     }
 
@@ -54,7 +59,7 @@ public class BudgetSpendingTools {
         LocalDate effectiveEnd = weekEnd.isAfter(today) ? today : weekEnd;
 
         long totalCents = spendingQueryService.totalSpentCents(
-                authenticatedUser(), weekStart, effectiveEnd);
+                authenticatedUserId(), weekStart, effectiveEnd);
         return new WeeklySpendingTotal(weekStart, effectiveEnd, euroAmount(totalCents));
     }
 
@@ -69,7 +74,7 @@ public class BudgetSpendingTools {
     public RecentSpendingTotal recentSpendingTotal(
             @ToolParam(description = "Number of weeks, from 1 to 52") int weeks) {
         SpendingQueryService.SpendingPeriodTotal total =
-                spendingQueryService.totalSpentForRecentWeeks(authenticatedUser(), weeks);
+                spendingQueryService.totalSpentForRecentWeeks(authenticatedUserId(), weeks);
         return new RecentSpendingTotal(
                 weeks, total.startDate(), total.endDate(), euroAmount(total.totalSpentCents()));
     }
@@ -84,7 +89,7 @@ public class BudgetSpendingTools {
                     + "The result is a euro amount with exactly two decimal places.")
     public SpendingSinceBudgetStart spendingSinceBudgetStart() {
         SpendingQueryService.SpendingPeriodTotal total =
-                spendingQueryService.totalSpentSinceBudgetStart(authenticatedUser());
+                spendingQueryService.totalSpentSinceBudgetStart(authenticatedUserId());
         return new SpendingSinceBudgetStart(
                 total.startDate(), total.endDate(), euroAmount(total.totalSpentCents()));
     }
@@ -97,7 +102,7 @@ public class BudgetSpendingTools {
                     + "date, weekday name, and total in euros. If there are no recorded expenses, the dates "
                     + "list is empty; never substitute today or a zero-spending day.")
     public HighestSpendingDates highestSpendingDate() {
-        List<HighestSpendingDay> days = spendingQueryService.highestSpendingDates(authenticatedUser())
+        List<HighestSpendingDay> days = spendingQueryService.highestSpendingDates(authenticatedUserId())
                 .stream()
                 .map(total -> new HighestSpendingDay(
                         total.date(),
@@ -107,13 +112,19 @@ public class BudgetSpendingTools {
         return new HighestSpendingDates(days);
     }
 
-    private OidcUser authenticatedUser() {
+    private long authenticatedUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()
-                || !(authentication.getPrincipal() instanceof OidcUser user)) {
-            throw new IllegalStateException("An authenticated OIDC user is required.");
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new IllegalStateException("An authenticated user is required.");
         }
-        return user;
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof OidcUser user) {
+            return accountService.requireUserId(user.getSubject());
+        }
+        if (principal instanceof BudgetMcpPrincipal mcpPrincipal) {
+            return mcpPrincipal.userId();
+        }
+        throw new IllegalStateException("An authenticated OIDC user or MCP token is required.");
     }
 
     private LocalDate parseDate(String value) {
