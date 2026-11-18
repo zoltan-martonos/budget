@@ -8,14 +8,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
 import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 @SpringBootTest
 class SpendingQueryServiceTest {
@@ -59,41 +56,34 @@ class SpendingQueryServiceTest {
         budgetService.addExpense(otherId, new CreateExpenseRequest(50_000L, "private", today));
 
         assertEquals(3_500, spendingQueryService.totalSpentCents(
-                oidcUser(OWNER_SUBJECT), startDate, today));
+                ownerId, startDate, today));
         assertEquals(1_000, spendingQueryService.totalSpentCents(
-                oidcUser(OWNER_SUBJECT), startDate.minusDays(10), startDate.plusDays(1)));
+                ownerId, startDate.minusDays(10), startDate.plusDays(1)));
         assertEquals(5_500, spendingQueryService.budgetBalanceCents(
-                oidcUser(OWNER_SUBJECT), today));
+                ownerId, today));
         assertEquals(0, spendingQueryService.totalSpentCents(
-                oidcUser(OWNER_SUBJECT), startDate.minusDays(3), startDate.minusDays(1)));
+                ownerId, startDate.minusDays(3), startDate.minusDays(1)));
     }
 
     @Test
     void requiresAnExistingBudgetAndRejectsInvalidOrFutureDates() {
         LocalDate today = LocalDate.now();
-        OidcUser owner = oidcUser(OWNER_SUBJECT);
         long ownerId = accountService.requireUserId(OWNER_SUBJECT);
         budgetService.setup(ownerId, new BudgetSetupRequest(today));
 
         assertThrows(IllegalArgumentException.class, () ->
-                spendingQueryService.totalSpentCents(owner, today, today.minusDays(1)));
+                spendingQueryService.totalSpentCents(ownerId, today, today.minusDays(1)));
         assertThrows(IllegalArgumentException.class, () ->
-                spendingQueryService.totalSpentCents(owner, today, today.plusDays(1)));
+                spendingQueryService.totalSpentCents(ownerId, today, today.plusDays(1)));
         assertThrows(IllegalArgumentException.class, () ->
-                spendingQueryService.budgetBalanceCents(owner, today.plusDays(1)));
+                spendingQueryService.budgetBalanceCents(ownerId, today.plusDays(1)));
         assertThrows(IllegalArgumentException.class, () ->
-                spendingQueryService.budgetBalanceCents(owner, null));
+                spendingQueryService.budgetBalanceCents(ownerId, null));
 
-        OidcUser userWithoutBudget = oidcUser("spending-query-no-budget");
         accountService.registerOrUpdateGoogleIdentity(
                 "spending-query-no-budget", "no-budget@example.com");
+        long noBudgetUserId = accountService.requireUserId("spending-query-no-budget");
         assertThrows(IllegalStateException.class, () ->
-                spendingQueryService.budgetBalanceCents(userWithoutBudget, today));
-    }
-
-    private OidcUser oidcUser(String subject) {
-        OidcUser user = mock(OidcUser.class);
-        when(user.getSubject()).thenReturn(subject);
-        return user;
+                spendingQueryService.budgetBalanceCents(noBudgetUserId, today));
     }
 }

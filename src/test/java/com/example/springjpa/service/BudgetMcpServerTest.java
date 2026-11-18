@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -18,14 +17,15 @@ import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest(properties = {
         "budget.auth.enabled=true",
@@ -50,10 +50,16 @@ class BudgetMcpServerTest {
     private BudgetService budgetService;
 
     @Autowired
+    private BudgetMcpTokenService tokenService;
+
+    @Autowired
     private BudgetSettingsRepository settingsRepository;
 
     @Autowired
     private ExpenseRepository expenseRepository;
+
+    private String ownerToken;
+    private String otherToken;
 
     @BeforeEach
     void setUpBudgets() {
@@ -71,37 +77,60 @@ class BudgetMcpServerTest {
                 new CreateExpenseRequest(1_250L, "Owner expense", today));
         budgetService.addExpense(accountService.requireUserId(OTHER_SUBJECT),
                 new CreateExpenseRequest(9_000L, "Other expense", today));
+        ownerToken = tokenService.rotateForGoogleSubject(OWNER_SUBJECT);
+        otherToken = tokenService.rotateForGoogleSubject(OTHER_SUBJECT);
     }
 
     @Test
-    void rejectsUnauthenticatedMcpRequestsAndRequiresCsrfForSignedInRequests() throws Exception {
+    void rejectsMissingInvalidAndSessionOnlyAuthentication() throws Exception {
         String initialize = initializeRequest();
         mockMvc.perform(get("/mcp").accept(MediaType.TEXT_EVENT_STREAM))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Bearer"));
         mockMvc.perform(post("/mcp")
-                        .with(csrf().asHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .accept(MCP_ACCEPT)
                         .content(initialize))
                 .andExpect(status().isUnauthorized());
-
+        mockMvc.perform(post("/mcp")
+                        .header("Authorization", "Bearer invalid-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MCP_ACCEPT)
+                        .content(initialize))
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/mcp")
                         .with(oidcLogin().idToken(token -> token.subject(OWNER_SUBJECT)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .accept(MCP_ACCEPT)
                         .content(initialize))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         initializeSession(initialize);
     }
 
     @Test
-    void exposesOnlyReadOnlySpendingToolsAndScopesCallsToTheAuthenticatedUser() throws Exception {
+    void bearerTokenAuthorizesInitializeAndSessionFollowUpWithoutBrowserSessionOrCsrf()
+            throws Exception {
         McpClientSession session = initializeSession(initializeRequest());
 
         mockMvc.perform(post("/mcp")
-                        .with(csrf().asHeader())
-                        .session(session.httpSession())
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .header("Mcp-Session-Id", session.mcpSessionId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MCP_ACCEPT)
+                        .content("""
+                                {"jsonrpc":"2.0","method":"notifications/initialized"}
+                                """))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get("/mcp")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .header("Mcp-Session-Id", session.mcpSessionId())
+                        .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/mcp")
+                        .header("Authorization", "Bearer " + ownerToken)
                         .header("Mcp-Session-Id", session.mcpSessionId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .accept(MCP_ACCEPT)
@@ -118,8 +147,7 @@ class BudgetMcpServerTest {
                 .andExpect(content().string(not(containsString("delete_expense"))));
 
         mockMvc.perform(post("/mcp")
-                        .with(csrf().asHeader())
-                        .session(session.httpSession())
+                        .header("Authorization", "Bearer " + ownerToken)
                         .header("Mcp-Session-Id", session.mcpSessionId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .accept(MCP_ACCEPT)
@@ -129,14 +157,40 @@ class BudgetMcpServerTest {
                                 }}
                                 """.formatted(LocalDate.now())))
                 .andExpect(status().isOk())
-                                .andExpect(content().string(containsString("12.50")))
+                .andExpect(content().string(containsString("12.50")))
                 .andExpect(content().string(not(containsString("90.00"))));
+
+        mockMvc.perform(delete("/mcp")
+                        .header("Mcp-Session-Id", session.mcpSessionId()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(delete("/mcp")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .header("Mcp-Session-Id", session.mcpSessionId()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void bearerPrincipalScopesToolsToItsTokenOwner() throws Exception {
+        McpClientSession session = initializeSession(initializeRequest());
+
+        mockMvc.perform(post("/mcp")
+                        .header("Authorization", "Bearer " + otherToken)
+                        .header("Mcp-Session-Id", session.mcpSessionId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MCP_ACCEPT)
+                        .content("""
+                                {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+                                  "name":"daily_spending_total","arguments":{"date":"%s"}
+                                }}
+                                """.formatted(LocalDate.now())))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("90.00")))
+                .andExpect(content().string(not(containsString("12.50"))));
     }
 
     private McpClientSession initializeSession(String request) throws Exception {
         MvcResult result = mockMvc.perform(post("/mcp")
-                        .with(oidcLogin().idToken(token -> token.subject(OWNER_SUBJECT)))
-                        .with(csrf().asHeader())
+                        .header("Authorization", "Bearer " + ownerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .accept(MCP_ACCEPT)
                         .content(request))
@@ -144,10 +198,9 @@ class BudgetMcpServerTest {
                 .andExpect(header().exists("Mcp-Session-Id"))
                 .andReturn();
         String sessionId = result.getResponse().getHeader("Mcp-Session-Id");
-        MockHttpSession httpSession = (MockHttpSession) result.getRequest().getSession(false);
         assertNotNull(sessionId);
-        assertNotNull(httpSession);
-        return new McpClientSession(sessionId, httpSession);
+        assertNull(result.getRequest().getSession(false));
+        return new McpClientSession(sessionId);
     }
 
     private String initializeRequest() {
@@ -159,6 +212,6 @@ class BudgetMcpServerTest {
                 """;
     }
 
-    private record McpClientSession(String mcpSessionId, MockHttpSession httpSession) {
+    private record McpClientSession(String mcpSessionId) {
     }
 }

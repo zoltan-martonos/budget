@@ -41,20 +41,40 @@ Successful assistant question/answer exchanges are stored in the local H2 databa
 
 The app also exposes its five read-only spending tools over Streamable HTTP at
 `http://localhost:8080/mcp`: daily, weekly, and recent spending totals, spending since
-the budget start date, and highest-spending date(s). The MCP server uses the same
-signed-in Google OIDC session as the web app. It accepts no user ID or email arguments
-and provides no write or arbitrary-query tools.
+the budget start date, and highest-spending date(s). The endpoint requires an
+`Authorization: Bearer <token>` header and accepts no user ID or email arguments.
+Browser UI and assistant requests continue to use the signed-in Google OIDC session
+and CSRF protection; MCP uses a separate, revocable per-user token.
+The earlier `/mcp` 403 was the expected CSRF rejection for Copilot's request without
+the browser's CSRF header; this setup does not disable CSRF globally.
 
-For local testing, sign in to the app in a browser first. In that browser's developer
-tools, copy the `JSESSIONID` cookie for `localhost` (it is HTTP-only, so JavaScript
-cannot read it). While signed in, open `http://localhost:8080/api/auth/status` and use
-the returned `csrfToken` value. Set those values in the environment as
-`BUDGET_MCP_SESSION_COOKIE` and `BUDGET_MCP_CSRF_TOKEN`; `.mcp.json` forwards them to
-the MCP server as the `Cookie` and `X-CSRF-TOKEN` headers. Restart the MCP client after
-updating either value. Keep both values private and do not commit them. This
-cookie-forwarding setup is for local testing, not an authentication strategy for a
-public deployment. Do not expose the app publicly without a separately designed and
-secured deployment.
+For localhost testing with Copilot:
+
+1. Start the app and sign in with Google in a browser.
+2. While signed in, use `POST /api/mcp-token` with the session's CSRF token. For
+   example, in the signed-in browser's developer console:
+
+   ```js
+   const { csrfToken } = await fetch("/api/auth/status").then(response => response.json());
+   const { token } = await fetch("/api/mcp-token", {
+     method: "POST",
+     headers: { "X-CSRF-TOKEN": csrfToken }
+   }).then(response => response.json());
+   console.log(token);
+   ```
+
+   The response contains the plaintext token only once. The endpoint rotates any
+   existing token for that account; the server stores only its SHA-256 hash.
+3. Paste the token into Copilot's private MCP configuration or secret setting as
+   `BUDGET_MCP_TOKEN`. Configure the server URL as `http://localhost:8080/mcp` and
+   the header as `Authorization: Bearer ${BUDGET_MCP_TOKEN}`. `.mcp.json` shows this
+   environment-variable form; do not put the token itself in a committed config.
+4. If the token is exposed, sign in again and issue another `POST /api/mcp-token` to
+   rotate it, or send a CSRF-protected `DELETE /api/mcp-token` to revoke it.
+
+This bearer-token setup is for localhost testing only, not a public deployment
+authentication strategy. Never commit or share the token, and do not expose the app
+publicly without a separately designed and secured deployment.
 
 ## Google sign-in
 

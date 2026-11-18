@@ -1,11 +1,14 @@
 package com.example.springjpa.security;
 
 import com.example.springjpa.service.BudgetAccountService;
-import org.springframework.http.HttpStatus;
+import com.example.springjpa.service.BudgetMcpTokenService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
@@ -19,12 +22,11 @@ import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
-import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.context.NullSecurityContextRepository;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -118,6 +120,30 @@ public class BudgetSecurityConfiguration {
     }
 
     @Bean
+    @Order(1)
+    SecurityFilterChain budgetMcpSecurityFilterChain(
+            HttpSecurity http, BudgetMcpTokenService tokenService) throws Exception {
+        http.securityMatcher(new AntPathRequestMatcher("/mcp"))
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .securityContext(context -> context
+                        .securityContextRepository(new NullSecurityContextRepository()))
+                .requestCache(cache -> cache.disable())
+                .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable())
+                .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(
+                        (request, response, exception) -> {
+                            response.setHeader("WWW-Authenticate", "Bearer");
+                            response.sendError(HttpStatus.UNAUTHORIZED.value());
+                        }))
+                .addFilterBefore(new BudgetMcpBearerTokenFilter(tokenService),
+                        org.springframework.security.web.authentication.AnonymousAuthenticationFilter.class)
+                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated());
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     SecurityFilterChain budgetSecurityFilterChain(
             HttpSecurity http,
             OAuth2UserService<OidcUserRequest, OidcUser> googleUserService,
@@ -126,14 +152,10 @@ public class BudgetSecurityConfiguration {
             @Value("${budget.auth.google.client-id:}") String clientId,
             @Value("${budget.auth.google.client-secret:}") String clientSecret) throws Exception {
         http.csrf(csrf -> csrf.csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()));
-        AuthenticationEntryPoint mcpAuthenticationEntryPoint =
-                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED);
-        http.exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
-                mcpAuthenticationEntryPoint, new AntPathRequestMatcher("/mcp")));
 
         if (!authenticationEnabled) {
             http.authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/mcp").authenticated()
+                    .requestMatchers("/api/mcp-token").authenticated()
                     .anyRequest().permitAll());
             return http.build();
         }
@@ -142,6 +164,7 @@ public class BudgetSecurityConfiguration {
         http.authorizeHttpRequests(auth -> auth
                         .requestMatchers("/login.html", "/login.js", "/styles.css", "/error",
                                 "/api/auth/status", "/oauth2/**", "/login/oauth2/**").permitAll()
+                        .requestMatchers("/api/mcp-token").authenticated()
                         .anyRequest().authenticated())
                 .oauth2Login(oauth -> oauth
                         .loginPage("/login.html")
@@ -165,11 +188,7 @@ public class BudgetSecurityConfiguration {
         if (!googleConfigured) {
             http.exceptionHandling(exceptions -> exceptions
                     .authenticationEntryPoint((request, response, exception) -> {
-                        if (new AntPathRequestMatcher("/mcp").matches(request)) {
-                            mcpAuthenticationEntryPoint.commence(request, response, exception);
-                        } else {
-                            response.sendRedirect("/login.html?setup=required");
-                        }
+                        response.sendRedirect("/login.html?setup=required");
                     }));
         }
         return http.build();
