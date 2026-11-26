@@ -4,6 +4,7 @@ import com.example.springjpa.api.dto.BudgetSetupRequest;
 import com.example.springjpa.api.dto.CreateExpenseRequest;
 import com.example.springjpa.domain.Expense;
 import com.example.springjpa.repository.BudgetSettingsRepository;
+import com.example.springjpa.repository.BudgetUserRepository;
 import com.example.springjpa.repository.ExpenseRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,9 @@ class BudgetSpendingToolsTest {
 
     @Autowired
     private BudgetSettingsRepository settingsRepository;
+
+    @Autowired
+    private BudgetUserRepository userRepository;
 
     @Autowired
     private ExpenseRepository expenseRepository;
@@ -153,8 +157,8 @@ class BudgetSpendingToolsTest {
         LocalDate budgetStart = today.minusDays(5);
         long ownerId = accountService.requireUserId(OWNER_SUBJECT);
         budgetService.setup(ownerId, new BudgetSetupRequest(budgetStart));
-        expenseRepository.save(new Expense(
-                ownerId, budgetStart.minusDays(1), 50_000L, "Before budget start"));
+        expenseRepository.save(new Expense(userRepository.getReferenceById(ownerId),
+                budgetStart.minusDays(1), 50_000L, "Before budget start"));
         budgetService.addExpense(ownerId, new CreateExpenseRequest(1_234L, "At budget start", budgetStart));
         budgetService.addExpense(ownerId, new CreateExpenseRequest(5_678L, "Today", today));
 
@@ -178,13 +182,15 @@ class BudgetSpendingToolsTest {
         budgetService.setup(ownerId, new BudgetSetupRequest(budgetStart));
         budgetService.setup(otherId, new BudgetSetupRequest(budgetStart));
 
-        expenseRepository.save(new Expense(ownerId, budgetStart.minusDays(1), 99_999L, "Before budget"));
+        expenseRepository.save(new Expense(userRepository.getReferenceById(ownerId),
+                budgetStart.minusDays(1), 99_999L, "Before budget"));
         budgetService.addExpense(ownerId, new CreateExpenseRequest(3_000L, "Budget start", budgetStart));
         budgetService.addExpense(ownerId, new CreateExpenseRequest(2_500L, "First maximum", firstMaximum));
         budgetService.addExpense(ownerId, new CreateExpenseRequest(3_500L, "Same day", firstMaximum));
         budgetService.addExpense(ownerId, new CreateExpenseRequest(6_000L, "Tied maximum", tiedMaximum));
         budgetService.addExpense(ownerId, new CreateExpenseRequest(1_000L, "Today", today));
-        expenseRepository.save(new Expense(ownerId, today.plusDays(1), 100_000L, "Future"));
+        expenseRepository.save(new Expense(userRepository.getReferenceById(ownerId),
+                today.plusDays(1), 100_000L, "Future"));
         budgetService.addExpense(otherId, new CreateExpenseRequest(200_000L, "Other user", firstMaximum));
 
         BudgetSpendingTools.HighestSpendingDates result = tools.highestSpendingDate();

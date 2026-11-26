@@ -7,8 +7,10 @@ import com.example.springjpa.api.dto.DailyBudgetResponse;
 import com.example.springjpa.api.dto.ExpenseResponse;
 import com.example.springjpa.api.dto.WeeklySpendResponse;
 import com.example.springjpa.domain.BudgetSettings;
+import com.example.springjpa.domain.BudgetUser;
 import com.example.springjpa.domain.Expense;
 import com.example.springjpa.repository.BudgetSettingsRepository;
+import com.example.springjpa.repository.BudgetUserRepository;
 import com.example.springjpa.repository.ExpenseRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,10 +31,15 @@ public class BudgetService {
     public static final long DAILY_ALLOWANCE_CENTS = 3_000;
 
     private final BudgetSettingsRepository settingsRepository;
+    private final BudgetUserRepository userRepository;
     private final ExpenseRepository expenseRepository;
 
-    public BudgetService(BudgetSettingsRepository settingsRepository, ExpenseRepository expenseRepository) {
+    public BudgetService(
+            BudgetSettingsRepository settingsRepository,
+            BudgetUserRepository userRepository,
+            ExpenseRepository expenseRepository) {
         this.settingsRepository = settingsRepository;
+        this.userRepository = userRepository;
         this.expenseRepository = expenseRepository;
     }
 
@@ -53,7 +60,7 @@ public class BudgetService {
         }
 
         List<Expense> allExpenses = expenseRepository
-                .findByUserIdAndSpentOnBetweenOrderBySpentOnAscIdAsc(userId, startDate, today);
+                .findByUser_IdAndSpentOnBetweenOrderBySpentOnAscIdAsc(userId, startDate, today);
         long allowanceToDate = Math.multiplyExact(
                 DAILY_ALLOWANCE_CENTS, today.toEpochDay() - startDate.toEpochDay() + 1);
         long totalSpent = 0;
@@ -68,7 +75,7 @@ public class BudgetService {
         }
 
         List<ExpenseResponse> monthExpenses = expenseRepository
-                .findByUserIdAndSpentOnBetweenOrderBySpentOnDescIdDesc(
+                .findByUser_IdAndSpentOnBetweenOrderBySpentOnDescIdDesc(
                         userId,
                         month.atDay(1).isBefore(startDate) ? startDate : month.atDay(1),
                         month.atEndOfMonth().isAfter(today) ? today : month.atEndOfMonth())
@@ -172,16 +179,20 @@ public class BudgetService {
         }
         String description = request.description() == null || request.description().isBlank()
                 ? null : request.description().trim();
+        BudgetUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalStateException("The authenticated budget user no longer exists."));
+        Expense expense = new Expense(user, request.spentOn(), request.amountCents(), description);
+        user.addExpense(expense);
         return toResponse(expenseRepository.save(
-                new Expense(userId, request.spentOn(), request.amountCents(), description)));
+                expense));
     }
 
     @Transactional
     public void deleteExpense(Long userId, Long expenseId) {
-        if (!expenseRepository.existsByIdAndUserId(expenseId, userId)) {
+        if (!expenseRepository.existsByIdAndUser_Id(expenseId, userId)) {
             throw new ExpenseNotFoundException(expenseId);
         }
-        expenseRepository.deleteByIdAndUserId(expenseId, userId);
+        expenseRepository.deleteByIdAndUser_Id(expenseId, userId);
     }
 
     private YearMonth parseMonth(String requestedMonth, LocalDate today) {

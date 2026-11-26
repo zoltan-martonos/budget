@@ -10,19 +10,19 @@ import java.util.List;
 
 public interface ExpenseRepository extends JpaRepository<Expense, Long> {
 
-    List<Expense> findByUserIdAndSpentOnBetweenOrderBySpentOnDescIdDesc(
+    List<Expense> findByUser_IdAndSpentOnBetweenOrderBySpentOnDescIdDesc(
             Long userId, LocalDate startDate, LocalDate endDate);
 
-    List<Expense> findByUserIdAndSpentOnBetweenOrderBySpentOnAscIdAsc(
+    List<Expense> findByUser_IdAndSpentOnBetweenOrderBySpentOnAscIdAsc(
             Long userId, LocalDate startDate, LocalDate endDate);
 
     @Query("""
             select coalesce(sum(expense.amountCents), 0)
             from Expense expense
-            where expense.userId = :userId
+            where expense.user.id = :userId
               and expense.spentOn between :startDate and :endDate
             """)
-    long sumAmountCentsByUserIdAndSpentOnBetween(
+    long sumAmountCentsByUser_IdAndSpentOnBetween(
             @Param("userId") Long userId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
@@ -30,7 +30,7 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
     @Query("""
             select expense.spentOn as spentOn, sum(expense.amountCents) as totalSpentCents
             from Expense expense
-            where expense.userId = :userId
+            where expense.user.id = :userId
               and expense.spentOn between :startDate and :endDate
             group by expense.spentOn
             order by expense.spentOn
@@ -40,9 +40,9 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
 
-    boolean existsByIdAndUserId(Long id, Long userId);
+    boolean existsByIdAndUser_Id(Long id, Long userId);
 
-    void deleteByIdAndUserId(Long id, Long userId);
+    void deleteByIdAndUser_Id(Long id, Long userId);
 
     interface DailySpendingTotal {
         LocalDate getSpentOn();
