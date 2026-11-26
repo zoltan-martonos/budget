@@ -1,6 +1,7 @@
 package com.example.springjpa.repository;
 
 import com.example.springjpa.domain.Expense;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -9,6 +10,9 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface ExpenseRepository extends JpaRepository<Expense, Long> {
+
+    @EntityGraph(attributePaths = "user")
+    List<Expense> findByAmountCentsGreaterThan(long amountCents);
 
     List<Expense> findByUser_IdAndSpentOnBetweenOrderBySpentOnDescIdDesc(
             Long userId, LocalDate startDate, LocalDate endDate);

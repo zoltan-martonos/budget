@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 class ExpenseUserRelationshipTest {
@@ -72,5 +73,25 @@ class ExpenseUserRelationshipTest {
         assertEquals(1, user.getExpenses().size());
         assertEquals(expenseId, user.getExpenses().getFirst().getId());
         assertSame(user, expense.getUser());
+    }
+
+    @Test
+    @Transactional
+    void findsDistinctUsersWithAnExpenseAboveOneHundredDollars() {
+        BudgetUser atThreshold = userRepository.findByGoogleSubject(USER_SUBJECT).orElseThrow();
+        BudgetUser aboveThreshold = userRepository.save(
+                new BudgetUser("above-threshold-test", "above-threshold@example.com"));
+        LocalDate today = LocalDate.now();
+        expenseRepository.save(new Expense(atThreshold, today, 10_000L, "Exactly $100"));
+        expenseRepository.save(new Expense(aboveThreshold, today, 10_001L, "Over $100"));
+        expenseRepository.save(new Expense(aboveThreshold, today, 15_000L, "Another expense over $100"));
+
+        var qualifyingExpenses = expenseRepository.findByAmountCentsGreaterThan(10_000L);
+        var users = userRepository.findDistinctByExpenses_AmountCentsGreaterThan(10_000L);
+
+        assertEquals(2, qualifyingExpenses.size());
+        assertTrue(qualifyingExpenses.stream().allMatch(expense -> Hibernate.isInitialized(expense.getUser())));
+        assertEquals(1, users.size());
+        assertTrue(users.stream().anyMatch(user -> user.getId().equals(aboveThreshold.getId())));
     }
 }
