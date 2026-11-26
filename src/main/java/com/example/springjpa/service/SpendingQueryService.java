@@ -38,7 +38,7 @@ public class SpendingQueryService {
         if (effectiveStart.isAfter(endDate)) {
             return 0;
         }
-        return expenseRepository.sumAmountCentsByUserIdAndSpentOnBetween(
+        return expenseRepository.sumAmountCentsByUser_IdAndSpentOnBetween(
                 userId, effectiveStart, endDate);
     }
 
@@ -65,7 +65,7 @@ public class SpendingQueryService {
                 ? settings.getAllowanceStartDate() : requestedStart;
         long totalSpentCents = effectiveStart.isAfter(endDate)
                 ? 0
-                : expenseRepository.sumAmountCentsByUserIdAndSpentOnBetween(
+                : expenseRepository.sumAmountCentsByUser_IdAndSpentOnBetween(
                         userId, effectiveStart, endDate);
         return new SpendingPeriodTotal(effectiveStart, endDate, totalSpentCents);
     }
@@ -113,7 +113,7 @@ public class SpendingQueryService {
         long allowanceCents = Math.multiplyExact(
                 BudgetService.DAILY_ALLOWANCE_CENTS,
                 asOfDate.toEpochDay() - allowanceStart.toEpochDay() + 1);
-        long spentCents = expenseRepository.sumAmountCentsByUserIdAndSpentOnBetween(
+        long spentCents = expenseRepository.sumAmountCentsByUser_IdAndSpentOnBetween(
                 userId, allowanceStart, asOfDate);
         return Math.subtractExact(allowanceCents, spentCents);
     }

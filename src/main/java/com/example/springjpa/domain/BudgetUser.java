@@ -5,7 +5,12 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 
 @Entity
 @Table(name = "app_users")
@@ -20,6 +25,9 @@ public class BudgetUser {
 
     @Column(length = 320)
     private String email;
+
+    @OneToMany(mappedBy = "user")
+    private List<Expense> expenses = new ArrayList<>();
 
     protected BudgetUser() {
     }
@@ -39,6 +47,17 @@ public class BudgetUser {
 
     public String getEmail() {
         return email;
+    }
+
+    public List<Expense> getExpenses() {
+        return expenses;
+    }
+
+    public void addExpense(Expense expense) {
+        if (!Objects.equals(expense.getUser().getId(), id)) {
+            throw new IllegalArgumentException("An expense can only be added to its associated user.");
+        }
+        expenses.add(expense);
     }
 
     public void claimGoogleIdentity(String googleSubject, String email) {

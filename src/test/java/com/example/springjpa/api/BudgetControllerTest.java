@@ -69,7 +69,8 @@ class BudgetControllerTest {
                         .content("""
                                 {"amountCents":1000,"description":"Lunch","spentOn":"%s"}
                                 """.formatted(today.minusDays(2))))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.user").doesNotExist());
 
         mockMvc.perform(writeAsOwner(post("/api/budget/expenses"))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -91,7 +92,7 @@ class BudgetControllerTest {
                 .andExpect(jsonPath("$.dailySummaries[2].balanceCents").value(-500));
 
         long expenseId = expenseRepository
-                .findByUserIdAndSpentOnBetweenOrderBySpentOnDescIdDesc(
+                .findByUser_IdAndSpentOnBetweenOrderBySpentOnDescIdDesc(
                         accountService.requireUserId(OWNER_SUBJECT), today, today).get(0).getId();
         mockMvc.perform(writeAsOwner(delete("/api/budget/expenses/{id}", expenseId)))
                 .andExpect(status().isNoContent());
@@ -298,8 +299,8 @@ class BudgetControllerTest {
         mockMvc.perform(writeAsUser(post("/api/budget/expenses"), "new-account-subject")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"amountCents":2400,"description":"Private expense","spentOn":"%s"}
-                                """.formatted(today)))
+                                {"amountCents":2400,"description":"Private expense","spentOn":"%s","userId":%d}
+                                """.formatted(today, ownerId)))
                 .andExpect(status().isCreated());
         mockMvc.perform(writeAsUser(put("/api/budget/start-date"), "new-account-subject")
                         .contentType(MediaType.APPLICATION_JSON)
